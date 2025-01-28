@@ -2,6 +2,7 @@ const availableTools = require('./manifest.json');
 
 // Structured Tools
 const DALLE3 = require('./structured/DALLE3');
+const DavinciProjectFiles = require('./structured/DavinciProjectFiles');
 const StructuredWolfram = require('./structured/Wolfram');
 const StructuredACS = require('./structured/AzureAISearch');
 const StructuredSD = require('./structured/StableDiffusion');
@@ -14,6 +15,7 @@ module.exports = {
   availableTools,
   // Structured Tools
   DALLE3,
+  DavinciProjectFiles,
   StructuredSD,
   StructuredACS,
   GoogleSearchAPI,

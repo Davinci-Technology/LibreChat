@@ -1,4 +1,11 @@
 [
+    {
+    "name": "Davinci Project Files",
+    "pluginKey": "davinci-project-files",
+    "description": "Provide access to local developer files.",
+    "icon": "https://compass.davincitech.ca/app/media/logos/DTS_logo-final_logo_only-fit.svg",
+    "authConfig": []
+  },
   {
     "name": "Traversaal",
     "pluginKey": "traversaal_search",
