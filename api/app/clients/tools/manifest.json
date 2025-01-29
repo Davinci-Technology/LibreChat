@@ -4,7 +4,13 @@
     "pluginKey": "davinci-project-files",
     "description": "Provide access to local developer files.",
     "icon": "https://compass.davincitech.ca/app/media/logos/DTS_logo-final_logo_only-fit.svg",
-    "authConfig": []
+    "authConfig": [
+      {
+        "authField": "DAVINCI_WEBSOCKET_URL",
+        "label": "The url of the Davinci websocket service",
+        "description": "Should be in the format ws://hostname.domain.com:8001/ws/librechat"
+      }
+    ]
   },
   {
     "name": "Traversaal",
