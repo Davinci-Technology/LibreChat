@@ -44,7 +44,7 @@ class DavinciProjectFiles extends Tool {
     }
 
     try {
-
+      logger.error('Creating WebSocket: ', this.wsUrl);
       this.ws = new WebSocket(this.wsUrl, {
         // Add some basic WebSocket options
         handshakeTimeout: 5000,
