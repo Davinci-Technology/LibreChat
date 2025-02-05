@@ -30,7 +30,8 @@ class DavinciProjectFiles extends Tool {
     `;
 
     this.ws = null;
-    this.wsUrl = getEnvironmentVariable('DAVINCI_WEBSOCKET_URL') + `/${this.userId}/`;
+    this.wsUrl = process.env.DAVINCI_WEBSOCKET_URL + `/${this.userId}/`;
+    logger.error("Davinci wsUrl set to " + this.wsUrl);
     this.pending_requests = new Map();
 
     if (!fields.override) {
