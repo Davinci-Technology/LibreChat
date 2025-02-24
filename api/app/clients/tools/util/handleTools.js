@@ -10,7 +10,6 @@ const {
   GoogleSearchAPI,
   // Structured Tools
   DALLE3,
-  OpenWeather,
   StructuredSD,
   StructuredACS,
   TraversaalSearch,
