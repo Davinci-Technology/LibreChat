@@ -2,7 +2,7 @@ name: Sync Locize Translations & Create Translation PR
 
 on:
   push:
-    branches: [main]
+    branches: [none]
   repository_dispatch:
     types: [locize/versionPublished]
 
