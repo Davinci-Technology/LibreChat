@@ -1,5 +1,5 @@
 ---
-name: Django CI
+name: Build and Deploy Container
 
 on:
   push:
