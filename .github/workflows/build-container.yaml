@@ -1,0 +1,24 @@
+---
+name: Django CI
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: self-hosted
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+      - name: Dockerize
+        run: |
+          docker build -t librechat:davinci .
+          docker tag librechat:davinci registry.davincitech.ca/librechat:davinci
+          docker push registry.davincitech.ca/librechat:davinci
+
+      - name: Deploy
+        run: |
+          export KUBECONFIG=$HOME/.kube/config.davinci
+          kubectl -n librechat rollout restart deployment/librechat-prd-librechat
+
