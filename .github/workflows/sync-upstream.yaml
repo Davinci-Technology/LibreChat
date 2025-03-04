@@ -23,9 +23,15 @@ jobs:
           git config --global user.name 'GitHub Actions'
           git config --global user.email 'actions@github.com'
 
-      - name: Add Upstream Remote
+      - name: Setup Upstream Remote
         run: |
-          git remote add upstream https://github.com/danny-avila/LibreChat.git
+          if git remote | grep -q "^upstream$"; then
+            echo "Upstream remote already exists, updating URL"
+            git remote set-url upstream https://github.com/danny-avila/LibreChat.git
+          else
+            echo "Adding upstream remote"
+            git remote add upstream https://github.com/danny-avila/LibreChat.git
+          fi
           git fetch upstream
 
       - name: Merge Upstream Changes
