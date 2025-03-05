@@ -10,7 +10,7 @@ on:
 
 jobs:
   sync:
-    runs-on: [self-hosted, linux]
+    runs-on: [self-hosted, Linux]
 
     steps:
       - name: Checkout
