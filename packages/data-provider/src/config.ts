@@ -531,6 +531,7 @@ export type TStartupConfig = {
   publicSharedLinksEnabled: boolean;
   analyticsGtmId?: string;
   instanceProjectId: string;
+  bundlerURL?: string;
 };
 
 export const configSchema = z.object({
@@ -811,6 +812,9 @@ export const supportsBalanceCheck = {
 };
 
 export const visionModels = [
+  'grok-3',
+  'grok-2-vision',
+  'grok-vision',
   'gpt-4.5',
   'gpt-4o',
   'gpt-4o-mini',
