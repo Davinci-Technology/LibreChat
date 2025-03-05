@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 jobs:
   build:
-    runs-on: self-hosted
+    runs-on: [self-hosted, linux]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v3
