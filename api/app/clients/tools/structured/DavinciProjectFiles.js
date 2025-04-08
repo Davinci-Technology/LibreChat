@@ -22,11 +22,19 @@ class DavinciProjectFiles extends Tool {
       file_path: z.string().optional().describe('The path of the file you want to retrieve'),
     });
     this.description = 'Access files on a developers workstation';
-    this.description_for_model = `// Access files on a developers workstation.
-    // General guidelines:
-    // - Use getProjects() function to get a list of projects the developer has made available to you.
-    // - Use getProjectTree(project_name) to access the file structure of a project.
-    // - Use getProjectFile(project_name, file_path) to access the contents of a file.
+    this.description_for_model = `
+      // When a user has this plugin enabled it is because they are working on a software project with you and expect you to use this plugin to access files on their workstation.
+      // When the user asks you to take a look at a file, you should use this plugin to access the file on their workstation without asking them to upload it, or asking permission.  The fact that this plugin is enabled is the permission.
+      // If the user has not specified a project name you should use the getProjects function to get a list of projects on their workstation and decide which one to use based on the users previous messages.
+      // If you are unsure how to find the file use the getProjectTree function to get the file structure of the project.
+      // Once you have the file path you can use the getProjectFile function to get the contents of the file.
+      // You should not ask the user for the file path, or ask them to upload the file.  You should use this plugin to access the file on their workstation.
+      // If the user asks you to troubleshoot a problem or add a feature without specifying a particular file name do the following.
+      // 1. Use the getProjects function to get a list of projects on their workstation if you have not already done so earlier in the conversation.
+      // 2. Use the getProjectTree function to get the file structure of the project if you have not already done so earlier in the conversation.
+      // 3. Analyze the project tree and determine the files that are most likely to be relevant to the problem or feature.
+      // 4. Use the getProjectFile function to get the contents of the file.
+      // 5. Use the contents of the file to troubleshoot the problem or add the feature, or request more files if you need them.
     `;
 
     this.ws = null;
