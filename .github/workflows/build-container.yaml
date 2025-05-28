@@ -51,6 +51,13 @@ jobs:
           git checkout main
           git merge upstream/main
 
+          # Auto-resolve workflow conflicts by keeping your version
+          find .github/workflows -name "*.yml" -not -name "build-container.yaml" -exec git rm {} \;
+          git add .github/workflows/
+    
+          # Complete the merge
+          git commit -m "Merge upstream, remove conflicting workflows"
+
       - name: Push Changes
         run: |
           git push origin main
