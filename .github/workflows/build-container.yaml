@@ -56,7 +56,7 @@ jobs:
           git add .github/workflows/
     
           # Complete the merge
-          git commit -m "Merge upstream, remove conflicting workflows"
+          git commit -m "Merge upstream, remove conflicting workflows" || true
 
       - name: Push Changes
         run: |
@@ -75,11 +75,15 @@ jobs:
           # Ensure we get the latest code including any changes from the sync job
           ref: main
 
+      - name: Log in to Docker Registry
+        run: |
+          echo "${{ secrets.REGISTRY_TOKEN }}" | docker login --username "${{ vars.REGISTRY_USERNAME }}" --password-stdin ${{ vars.REGISTRY_HOSTNAME }}
+
       - name: Dockerize
         run: |
           docker build -t librechat:davinci .
-          docker tag librechat:davinci registry.davincitech.ca/librechat:davinci
-          docker push registry.davincitech.ca/librechat:davinci
+          docker tag librechat:davinci ${{ vars.REGISTRY_HOSTNAME }}/librechat:davinci
+          docker push ${{ vars.REGISTRY_HOSTNAME }}/librechat:davinci
 
       - name: Deploy
         run: |
