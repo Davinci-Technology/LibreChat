@@ -49,14 +49,14 @@ jobs:
       - name: Merge Upstream Changes
         run: |
           git checkout main
-          git merge upstream/main
-
-          # Auto-resolve workflow conflicts by keeping your version
-          find .github/workflows -name "*.yml" -not -name "build-container.yaml" -exec git rm {} \;
+          git fetch upstream
+          git checkout -b temp-merge upstream/main
+          find .github/workflows -name "*.yml" -not -name "build-container.yaml" -delete || true
           git add .github/workflows/
-    
-          # Complete the merge
-          git commit -m "Merge upstream, remove conflicting workflows" || true
+          git commit -m "Remove conflicting workflows" || true
+          git checkout main
+          git merge temp-merge -m "Merge upstream with workflow conflicts resolved"          
+          git branch -d temp-merge
 
       - name: Push Changes
         run: |
