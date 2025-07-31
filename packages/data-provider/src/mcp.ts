@@ -91,6 +91,7 @@ export const StdioOptionsSchema = BaseOptionsSchema.extend({
 
 export const WebSocketOptionsSchema = BaseOptionsSchema.extend({
   type: z.literal('websocket').optional(),
+  headers: z.record(z.string(), z.string()).optional(),
   url: z
     .string()
     .transform((val: string) => extractEnvVariable(val))
