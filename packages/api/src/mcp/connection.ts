@@ -18,9 +18,10 @@ import type {
   Response as UndiciResponse,
 } from 'undici';
 import type { MCPOAuthTokens } from './oauth/types';
-import { mcpConfig } from './mcpConfig';
 import type * as t from './types';
 import { WebSocketClientTransportWithHeaders } from './WebSocketClientTransportWithHeaders.js';
+import { sanitizeUrlForLogging } from './utils';
+import { mcpConfig } from './mcpConfig';
 
 type FetchLike = (url: string | URL, init?: RequestInit) => Promise<Response>;
 
@@ -226,49 +227,12 @@ export class MCPConnection extends EventEmitter {
             env: { ...getDefaultEnvironment(), ...(options.env ?? {}) },
           });
 
-        case 'websocket': {
+        case 'websocket':
           if (!isWebSocketOptions(options)) {
             throw new Error('Invalid options for websocket transport.');
           }
           this.url = options.url;
-          const url = new URL(options.url);
-          logger.info(`${this.getLogPrefix()} Creating WebSocket transport: ${url.toString()}`);
-
-          // Add OAuth token to headers if available
-          const headers = { ...options.headers };
-          if (this.oauthTokens?.access_token) {
-            headers['Authorization'] = `Bearer ${this.oauthTokens.access_token}`;
-          }
-
-          // Log headers for debugging (redact sensitive info)
-          if (Object.keys(headers).length > 0) {
-            const headerInfo = Object.keys(headers).map((key) =>
-              key.toLowerCase().includes('auth') || key.toLowerCase().includes('token')
-                ? `${key}: [REDACTED]`
-                : `${key}: ${headers[key]}`,
-            );
-            logger.info(`${this.getLogPrefix()} WebSocket headers: ${headerInfo.join(', ')}`);
-          }
-
-          // Use custom transport with headers support
-          const transport = new WebSocketClientTransportWithHeaders(url, {
-            headers: Object.keys(headers).length > 0 ? headers : undefined,
-          });
-
-          transport.onclose = () => {
-            logger.info(`${this.getLogPrefix()} WebSocket transport closed`);
-            this.emit('connectionChange', 'disconnected');
-          };
-
-          transport.onmessage = (message) => {
-            logger.debug(
-              `${this.getLogPrefix()} WebSocket message received: ${JSON.stringify(message)}`,
-            );
-          };
-
-          this.setupTransportErrorHandlers(transport);
-          return transport;
-        }
+          return new WebSocketClientTransport(new URL(options.url));
 
         case 'sse': {
           if (!isSSEOptions(options)) {
