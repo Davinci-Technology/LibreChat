@@ -18,6 +18,7 @@ import type {
   Response as UndiciResponse,
 } from 'undici';
 import type { MCPOAuthTokens } from './oauth/types';
+import { withTimeout } from '~/utils/promise';
 import type * as t from './types';
 import { WebSocketClientTransportWithHeaders } from './WebSocketClientTransportWithHeaders.js';
 import { sanitizeUrlForLogging } from './utils';
@@ -227,12 +228,27 @@ export class MCPConnection extends EventEmitter {
             env: { ...getDefaultEnvironment(), ...(options.env ?? {}) },
           });
 
-        case 'websocket':
+        case 'websocket': {
           if (!isWebSocketOptions(options)) {
             throw new Error('Invalid options for websocket transport.');
           }
           this.url = options.url;
-          return new WebSocketClientTransport(new URL(options.url));
+          const url = new URL(options.url);
+          logger.info(`${this.getLogPrefix()} Creating WebSocket transport: ${url.toString()}`);
+
+          /** Add OAuth token to headers if available */
+          const headers = { ...options.headers };
+          if (this.oauthTokens?.access_token) {
+            headers['Authorization'] = `Bearer ${this.oauthTokens.access_token}`;
+          }
+
+          const transport = new WebSocketClientTransportWithHeaders(url, {
+            headers: Object.keys(headers).length > 0 ? headers : undefined,
+          });
+
+          this.setupTransportErrorHandlers(transport);
+          return transport;
+        }
 
         case 'sse': {
           if (!isSSEOptions(options)) {
@@ -456,15 +472,11 @@ export class MCPConnection extends EventEmitter {
         this.setupTransportDebugHandlers();
 
         const connectTimeout = this.options.initTimeout ?? 120000;
-        await Promise.race([
+        await withTimeout(
           this.client.connect(this.transport),
-          new Promise((_resolve, reject) =>
-            setTimeout(
-              () => reject(new Error(`Connection timeout after ${connectTimeout}ms`)),
-              connectTimeout,
-            ),
-          ),
-        ]);
+          connectTimeout,
+          `Connection timeout after ${connectTimeout}ms`,
+        );
 
         this.connectionState = 'connected';
         this.emit('connectionChange', 'connected');
