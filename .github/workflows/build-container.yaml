@@ -86,6 +86,17 @@ jobs:
           docker push ${{ vars.REGISTRY_HOSTNAME }}/librechat:davinci
 
       - name: Deploy
+        env:
+          KUBECONFIG_CONTENT: ${{ secrets.KUBECONFIG }}
         run: |
-          export KUBECONFIG=$HOME/.kube/config.davinci
+          # Create temporary kubeconfig file
+          mkdir -p $HOME/.kube
+          echo "$KUBECONFIG_CONTENT" > $HOME/.kube/config-temp
+          chmod 600 $HOME/.kube/config-temp
+
+          # Set KUBECONFIG and deploy
+          export KUBECONFIG=$HOME/.kube/config-temp
           kubectl -n librechat rollout restart deployment/librechat-prd-librechat
+
+          # Clean up
+          rm -f $HOME/.kube/config-temp
