@@ -49,14 +49,75 @@ jobs:
       - name: Merge Upstream Changes
         run: |
           git checkout main
-          git fetch upstream
-          git checkout -b temp-merge upstream/main
-          find .github/workflows -name "*.yml" -not -name "build-container.yaml" -delete || true
-          git add .github/workflows/
-          git commit -m "Remove conflicting workflows" || true
-          git checkout main
-          git merge temp-merge -m "Merge upstream with workflow conflicts resolved"          
-          git branch -D temp-merge
+
+          # Attempt merge, allow failure for conflict resolution
+          if git merge upstream/main --no-edit; then
+            echo "Merge completed cleanly."
+          else
+            echo "Merge conflicts detected, resolving known patterns..."
+
+            # 1. Workflows: delete all upstream workflows, keep ours
+            find .github/workflows -name "*.yml" -not -name "build-container.yaml" -delete 2>/dev/null || true
+            find .github/workflows -name "*.yaml" -not -name "build-container.yaml" -delete 2>/dev/null || true
+            git checkout --ours -- .github/workflows/build-container.yaml 2>/dev/null || true
+            git add .github/workflows/
+
+            # 2. Our custom files: keep ours
+            for f in \
+              packages/api/src/mcp/connection.ts \
+              api/app/clients/tools/util/handleTools.js \
+              api/app/clients/tools/index.js; do
+              if git diff --name-only --diff-filter=U | grep -q "^${f}$"; then
+                echo "Resolving $f -> keeping ours"
+                git checkout --ours -- "$f"
+                git add "$f"
+              fi
+            done
+
+            # 3. CLAUDE.md: keep ours (upstream may have AGENTS.md symlink causing type conflict)
+            if git status --porcelain | grep -q "CLAUDE.md"; then
+              git checkout --ours -- CLAUDE.md 2>/dev/null || true
+              git add CLAUDE.md
+            fi
+            # Clean up AGENTS.md symlink if upstream introduced it
+            if [ -L "AGENTS.md" ] || git diff --name-only --diff-filter=U 2>/dev/null | grep -q "^AGENTS.md$"; then
+              git rm -f AGENTS.md 2>/dev/null || true
+              rm -f AGENTS.md 2>/dev/null || true
+            fi
+
+            # 4. package.json / package-lock.json: accept upstream versions
+            for f in package.json package-lock.json packages/api/package.json; do
+              if git diff --name-only --diff-filter=U | grep -q "^${f}$"; then
+                echo "Resolving $f -> accepting upstream"
+                git checkout --theirs -- "$f"
+                git add "$f"
+              fi
+            done
+
+            # 5. Check for any remaining unresolved conflicts
+            REMAINING=$(git diff --name-only --diff-filter=U 2>/dev/null || true)
+            if [ -n "$REMAINING" ]; then
+              echo "::error::Unresolved merge conflicts in:"
+              echo "$REMAINING"
+              echo "Manual intervention required."
+              exit 1
+            fi
+
+            git commit --no-edit
+          fi
+
+          # Post-merge: remove any upstream workflows that came in cleanly
+          REMOVED_WORKFLOWS=false
+          for wf in .github/workflows/*.yml .github/workflows/*.yaml; do
+            if [ -f "$wf" ] && [ "$(basename "$wf")" != "build-container.yaml" ]; then
+              rm "$wf"
+              git add "$wf"
+              REMOVED_WORKFLOWS=true
+            fi
+          done
+          if [ "$REMOVED_WORKFLOWS" = true ]; then
+            git commit -m "Remove upstream workflows" || true
+          fi
 
       - name: Push Changes
         run: |
