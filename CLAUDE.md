@@ -23,16 +23,30 @@ git remote set-url upstream https://github.com/danny-avila/LibreChat.git
 
 ## Our Customizations
 
-### 1. Custom GitHub Workflow
-**Location**: `.github/workflows/build-container.yaml`
+### 1. Jenkins CI/CD Pipeline
+**Location**: `Jenkinsfile` (project root)
 
-We replaced all upstream GitHub workflows with a single workflow that:
-- Runs daily at 10:00 UTC (3am PST)
-- Automatically syncs with upstream changes
-- Builds and deploys our Docker container
-- Handles merge conflicts by removing upstream workflows automatically
+We use a Jenkinsfile (declarative pipeline) for CI/CD, triggered by:
+- **Daily cron** at 10:00 UTC (3am PST) — runs upstream sync + build + deploy
+- **GitHub webhook** on push to `main` — runs build + deploy (skips sync)
+- **Manual trigger** with parameters:
+  - `SYNC_ONLY`: Only sync with upstream (no build/deploy)
+  - `SKIP_SYNC`: Skip upstream sync (build/deploy only)
 
-**Important**: We deliberately delete all upstream workflows during merge to avoid conflicts.
+The pipeline has three stages:
+1. **Sync Upstream**: Fetches and merges upstream changes with automatic conflict resolution, then pushes to origin
+2. **Build**: Docker build, tag, and push to our Azure Container Registry
+3. **Deploy**: Kubectl rollout restart on AKS
+
+**Jenkins Credentials Required**:
+| Credential ID | Type | Content |
+|---|---|---|
+| `registry-hostname` | Secret text | `davinciai.azurecr.io` |
+| `registry-credentials` | Username/password | Registry username + token |
+| `kubeconfig` | Secret file | Kubernetes config for AKS |
+| `github-ssh-key` | SSH key | For pushing to `Davinci-Technology/LibreChat` |
+
+**Important**: We deliberately delete all upstream GitHub Actions workflows during merge to avoid conflicts.
 
 ### 2. DaVinci Files Plugin
 **Location**: Plugin directory (custom plugin)
@@ -55,7 +69,7 @@ The standard MCP SDK's WebSocket client doesn't support headers, so we implement
 ## Daily Merge Process
 
 ### Automatic Daily Sync
-The GitHub workflow automatically attempts to merge upstream changes daily. When it fails due to conflicts, follow these steps:
+The Jenkinsfile pipeline automatically attempts to merge upstream changes daily (via cron trigger). When it fails due to conflicts, follow these steps:
 
 ### Manual Merge Resolution Process
 
@@ -80,7 +94,7 @@ The GitHub workflow automatically attempts to merge upstream changes daily. When
 
    #### GitHub Workflows Conflict
    - **Conflict**: Any `.github/workflows/*.yml` files from upstream
-   - **Resolution**: Delete all upstream workflows except our `build-container.yaml`
+   - **Resolution**: Delete all upstream workflows
    ```bash
    git rm .github/workflows/[conflicting-workflow].yml
    ```
@@ -91,7 +105,7 @@ The GitHub workflow automatically attempts to merge upstream changes daily. When
      - Import statements: Accept upstream's imports but keep our `WebSocketClientTransportWithHeaders` import
      - Constructor changes: Accept upstream's interface changes (like `MCPConnectionParams`)
      - WebSocket case in `constructTransport()`: Keep our custom implementation (lines 219-261)
-   
+
    **Key Section to Preserve**:
    ```typescript
    case 'websocket': {
@@ -117,13 +131,14 @@ The GitHub workflow automatically attempts to merge upstream changes daily. When
 
 ## Testing After Merge
 
-- There are no automated tests that we use right now.  We fix merge conflicts as they arise, on push to origin/main github workflow will build and deploy the container.
+- There are no automated tests that we use right now. We fix merge conflicts as they arise, on push to origin/main the Jenkins pipeline will build and deploy the container.
 - Errors will be caught by the staff during testing of the deployed container the following day.
 
 ## Important Notes
 
 - **Never accept upstream's WebSocket implementation** in `connection.ts` - always keep our custom `WebSocketClientTransportWithHeaders`
-- **Always remove upstream workflows** - we only use our custom `build-container.yaml`
+- **Always remove upstream workflows** - we have no GitHub Actions workflows of our own; CI/CD is handled by the Jenkinsfile
+- **Never accept upstream's Jenkinsfile changes** - the Jenkinsfile is in the "keep ours" list during merge conflict resolution
 
 ## Troubleshooting
 
@@ -133,7 +148,13 @@ The GitHub workflow automatically attempts to merge upstream changes daily. When
 3. Ensure the WebSocket case in `constructTransport()` uses our custom class
 
 ### If Daily Sync Fails Repeatedly
-1. Check for new types of conflicts not covered above
-2. Update this documentation with new conflict resolution steps
-3. Consider updating the workflow to handle new conflict patterns
+1. Check Jenkins build logs for the specific merge conflict
+2. Check for new types of conflicts not covered above
+3. Update this documentation with new conflict resolution steps
+4. Consider updating the Jenkinsfile to handle new conflict patterns
 
+### If Jenkins Pipeline Fails
+1. Verify the four credentials are configured in Jenkins (`registry-hostname`, `registry-credentials`, `kubeconfig`, `github-ssh-key`)
+2. Ensure the Jenkins GitHub plugin is installed for webhook triggers
+3. Check that Docker is available on the Jenkins agent
+4. Verify kubectl is installed on the Jenkins agent
