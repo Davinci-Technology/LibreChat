@@ -283,7 +283,7 @@ class RequestExecutor {
     return this;
   }
 
-  async execute() {
+  async execute(options?: { httpAgent?: unknown; httpsAgent?: unknown }) {
     const url = createURL(this.config.domain, this.path);
     const headers: Record<string, string> = {
       ...this.authHeaders,
@@ -300,10 +300,15 @@ class RequestExecutor {
      *
      * By setting maxRedirects: 0, we prevent this attack vector.
      * The action will receive the redirect response (3xx) instead of following it.
+     *
+     * SECURITY: When httpAgent/httpsAgent are provided (SSRF-safe agents), they validate
+     * the DNS-resolved IP at TCP connect time, preventing TOCTOU DNS rebinding attacks.
      */
     const axios = _axios.create({
       maxRedirects: 0,
-      validateStatus: (status) => status >= 200 && status < 400, // Accept 3xx but don't follow
+      validateStatus: (status) => status >= 200 && status < 400,
+      ...(options?.httpAgent != null ? { httpAgent: options.httpAgent } : {}),
+      ...(options?.httpsAgent != null ? { httpsAgent: options.httpsAgent } : {}),
     });
 
     // Initialize separate containers for query and body parameters.
@@ -698,9 +703,9 @@ export function validateActionDomain(
     if (clientHasProtocol) {
       normalizedClientDomain = extractDomainFromUrl(clientProvidedDomain);
     } else {
-      // IP addresses inherit protocol from spec, domains default to https
+      // No protocol specified by client
       if (isIPAddress) {
-        // IPv6 addresses need brackets in URLs
+        // IPs inherit protocol from spec (for legitimate internal services)
         const ipVersion = isIP(normalizedClientHostname);
         const hostname =
           ipVersion === 6 && !clientHostname.startsWith('[')
@@ -708,6 +713,7 @@ export function validateActionDomain(
             : clientHostname;
         normalizedClientDomain = `${specUrl.protocol}//${hostname}`;
       } else {
+        // Domain names default to HTTPS for security (forces explicit protocol)
         normalizedClientDomain = `https://${clientHostname}`;
       }
     }

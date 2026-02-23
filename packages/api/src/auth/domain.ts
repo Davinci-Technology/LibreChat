@@ -1,3 +1,5 @@
+import { lookup } from 'node:dns/promises';
+
 /**
  * @param email
  * @param allowedDomains
@@ -22,6 +24,88 @@ export function isEmailDomainAllowed(email: string, allowedDomains?: string[] | 
   return allowedDomains.some((allowedDomain) => allowedDomain?.toLowerCase() === domain);
 }
 
+/** Checks if IPv4 octets fall within private, reserved, or link-local ranges */
+function isPrivateIPv4(a: number, b: number, c: number): boolean {
+  if (a === 127) {
+    return true;
+  }
+  if (a === 10) {
+    return true;
+  }
+  if (a === 172 && b >= 16 && b <= 31) {
+    return true;
+  }
+  if (a === 192 && b === 168) {
+    return true;
+  }
+  if (a === 169 && b === 254) {
+    return true;
+  }
+  if (a === 0 && b === 0 && c === 0) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Checks if an IP address belongs to a private, reserved, or link-local range.
+ * Handles IPv4, IPv6, and IPv4-mapped IPv6 addresses (::ffff:A.B.C.D).
+ */
+export function isPrivateIP(ip: string): boolean {
+  const normalized = ip.toLowerCase().trim();
+
+  const mappedMatch = normalized.match(/^::ffff:(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (mappedMatch) {
+    const [, a, b, c] = mappedMatch.map(Number);
+    return isPrivateIPv4(a, b, c);
+  }
+
+  const ipv4Match = normalized.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (ipv4Match) {
+    const [, a, b, c] = ipv4Match.map(Number);
+    return isPrivateIPv4(a, b, c);
+  }
+
+  const ipv6 = normalized.replace(/^\[|\]$/g, '');
+  if (
+    ipv6 === '::1' ||
+    ipv6 === '::' ||
+    ipv6.startsWith('fc') ||
+    ipv6.startsWith('fd') ||
+    ipv6.startsWith('fe80')
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Resolves a hostname via DNS and checks if any resolved address is a private/reserved IP.
+ * Detects DNS-based SSRF bypasses (e.g., nip.io wildcard DNS, attacker-controlled nameservers).
+ * Fails open: returns false if DNS resolution fails, since hostname-only checks still apply
+ * and the actual HTTP request would also fail.
+ */
+export async function resolveHostnameSSRF(hostname: string): Promise<boolean> {
+  const normalizedHost = hostname.toLowerCase().trim();
+
+  if (/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.test(normalizedHost)) {
+    return false;
+  }
+
+  const ipv6Check = normalizedHost.replace(/^\[|\]$/g, '');
+  if (ipv6Check.includes(':')) {
+    return false;
+  }
+
+  try {
+    const addresses = await lookup(hostname, { all: true });
+    return addresses.some((entry) => isPrivateIP(entry.address));
+  } catch {
+    return false;
+  }
+}
+
 /**
  * SSRF Protection: Checks if a hostname/IP is a potentially dangerous internal target.
  * Blocks private IPs, localhost, cloud metadata IPs, and common internal hostnames.
@@ -31,7 +115,6 @@ export function isEmailDomainAllowed(email: string, allowedDomains?: string[] | 
 export function isSSRFTarget(hostname: string): boolean {
   const normalizedHost = hostname.toLowerCase().trim();
 
-  // Block localhost variations
   if (
     normalizedHost === 'localhost' ||
     normalizedHost === 'localhost.localdomain' ||
@@ -40,51 +123,7 @@ export function isSSRFTarget(hostname: string): boolean {
     return true;
   }
 
-  // Check if it's an IP address and block private/internal ranges
-  const ipv4Match = normalizedHost.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
-  if (ipv4Match) {
-    const [, a, b, c] = ipv4Match.map(Number);
-
-    // 127.0.0.0/8 - Loopback
-    if (a === 127) {
-      return true;
-    }
-
-    // 10.0.0.0/8 - Private
-    if (a === 10) {
-      return true;
-    }
-
-    // 172.16.0.0/12 - Private (172.16.x.x - 172.31.x.x)
-    if (a === 172 && b >= 16 && b <= 31) {
-      return true;
-    }
-
-    // 192.168.0.0/16 - Private
-    if (a === 192 && b === 168) {
-      return true;
-    }
-
-    // 169.254.0.0/16 - Link-local (includes cloud metadata 169.254.169.254)
-    if (a === 169 && b === 254) {
-      return true;
-    }
-
-    // 0.0.0.0 - Special
-    if (a === 0 && b === 0 && c === 0) {
-      return true;
-    }
-  }
-
-  // IPv6 loopback and private ranges
-  const ipv6Normalized = normalizedHost.replace(/^\[|\]$/g, ''); // Remove brackets if present
-  if (
-    ipv6Normalized === '::1' ||
-    ipv6Normalized === '::' ||
-    ipv6Normalized.startsWith('fc') || // fc00::/7 - Unique local
-    ipv6Normalized.startsWith('fd') || // fd00::/8 - Unique local
-    ipv6Normalized.startsWith('fe80') // fe80::/10 - Link-local
-  ) {
+  if (isPrivateIP(normalizedHost)) {
     return true;
   }
 
@@ -129,15 +168,28 @@ export function isSSRFTarget(hostname: string): boolean {
   return false;
 }
 
+/** Supported protocols for domain validation (HTTP, HTTPS, WebSocket) */
+type SupportedProtocol = 'http:' | 'https:' | 'ws:' | 'wss:';
+
 /**
  * Parsed domain specification including protocol and port constraints.
  */
 interface ParsedDomainSpec {
   hostname: string;
-  protocol?: 'http:' | 'https:' | null; // null means any protocol
-  port?: string | null; // null means any port
+  protocol: SupportedProtocol | null; // null means any protocol allowed
+  port: string | null; // null means any port allowed
   explicitPort: boolean; // true if port was explicitly specified in original string
   isWildcard: boolean;
+}
+
+/** Checks if a string starts with a recognized protocol prefix */
+function hasRecognizedProtocol(domain: string): boolean {
+  return (
+    domain.startsWith('http://') ||
+    domain.startsWith('https://') ||
+    domain.startsWith('ws://') ||
+    domain.startsWith('wss://')
+  );
 }
 
 /**
@@ -146,6 +198,7 @@ interface ParsedDomainSpec {
  *   - `example.com` (any protocol, any port)
  *   - `https://example.com` (https only, any port)
  *   - `https://example.com:443` (https only, port 443)
+ *   - `wss://ws.example.com` (secure WebSocket only)
  *   - `*.example.com` (wildcard subdomain)
  * @param domain - Domain specification string
  * @returns ParsedDomainSpec or null if invalid
@@ -154,17 +207,17 @@ function parseDomainSpec(domain: string): ParsedDomainSpec | null {
   try {
     let normalizedDomain = domain.toLowerCase().trim();
 
-    // Early return for obviously invalid formats
-    if (normalizedDomain === 'http://' || normalizedDomain === 'https://') {
+    // Early return for obviously invalid formats (protocol-only strings)
+    const emptyProtocols = ['http://', 'https://', 'ws://', 'wss://'];
+    if (emptyProtocols.includes(normalizedDomain)) {
       return null;
     }
 
     // Check for wildcard prefix before parsing
     const isWildcard = normalizedDomain.startsWith('*.');
 
-    // Check if it has a protocol
-    const hasProtocol =
-      normalizedDomain.startsWith('http://') || normalizedDomain.startsWith('https://');
+    // Check if it has a recognized protocol (http, https, ws, wss)
+    const hasProtocol = hasRecognizedProtocol(normalizedDomain);
 
     // Check if port was explicitly specified (e.g., :443, :8080)
     // Need to check before URL parsing because URL normalizes default ports
@@ -180,7 +233,7 @@ function parseDomainSpec(domain: string): ParsedDomainSpec | null {
     const url = new URL(normalizedDomain);
 
     // Additional validation that hostname isn't just protocol
-    if (!url.hostname || url.hostname === 'http:' || url.hostname === 'https:') {
+    if (!url.hostname || emptyProtocols.some((p) => url.hostname === p.replace('://', ''))) {
       return null;
     }
 
@@ -188,7 +241,7 @@ function parseDomainSpec(domain: string): ParsedDomainSpec | null {
 
     return {
       hostname,
-      protocol: hasProtocol ? (url.protocol as 'http:' | 'https:') : null,
+      protocol: hasProtocol ? (url.protocol as SupportedProtocol) : null,
       // Use the explicitly specified port, or null if no port was specified
       port: explicitPort ? explicitPortValue : null,
       explicitPort,
@@ -211,30 +264,29 @@ function hostnameMatches(inputHostname: string, allowedSpec: ParsedDomainSpec): 
   return inputHostname === allowedSpec.hostname;
 }
 
+/** Protocol sets for different use cases */
+const HTTP_PROTOCOLS: SupportedProtocol[] = ['http:', 'https:'];
+const MCP_PROTOCOLS: SupportedProtocol[] = ['http:', 'https:', 'ws:', 'wss:'];
+
 /**
- * Checks if the given domain is allowed.
- * SECURITY: When no allowedDomains is configured, blocks SSRF-prone targets
- * (private IPs, localhost, metadata services) to prevent attacks.
- * When allowedDomains IS configured, admins can explicitly allow internal targets if needed.
- *
- * Supports protocol and port restrictions in allowedDomains:
- *   - `example.com` - allows any protocol/port
- *   - `https://example.com` - allows only HTTPS on default port
- *   - `https://example.com:8443` - allows only HTTPS on port 8443
- *
+ * Core domain validation logic with configurable protocol support.
+ * SECURITY: When no allowedDomains is configured, blocks SSRF-prone targets.
  * @param domain - The domain to check (can include protocol/port)
  * @param allowedDomains - List of allowed domain patterns
+ * @param supportedProtocols - Protocols to accept (others are rejected)
  */
-export async function isActionDomainAllowed(
-  domain?: string | null,
-  allowedDomains?: string[] | null,
+async function isDomainAllowedCore(
+  domain: string,
+  allowedDomains: string[] | null | undefined,
+  supportedProtocols: SupportedProtocol[],
 ): Promise<boolean> {
-  if (!domain || typeof domain !== 'string') {
+  const inputSpec = parseDomainSpec(domain);
+  if (!inputSpec) {
     return false;
   }
 
-  const inputSpec = parseDomainSpec(domain);
-  if (!inputSpec) {
+  // SECURITY: Reject unsupported protocols (e.g., WebSocket for OpenAPI Actions)
+  if (inputSpec.protocol !== null && !supportedProtocols.includes(inputSpec.protocol)) {
     return false;
   }
 
@@ -244,6 +296,10 @@ export async function isActionDomainAllowed(
     if (isSSRFTarget(inputSpec.hostname)) {
       return false;
     }
+    /** SECURITY: Resolve hostname and block if it points to a private/reserved IP */
+    if (await resolveHostnameSSRF(inputSpec.hostname)) {
+      return false;
+    }
     return true;
   }
 
@@ -251,6 +307,11 @@ export async function isActionDomainAllowed(
   for (const allowedDomain of allowedDomains) {
     const allowedSpec = parseDomainSpec(allowedDomain);
     if (!allowedSpec) {
+      continue;
+    }
+
+    // Skip allowedDomains with unsupported protocols for this context
+    if (allowedSpec.protocol !== null && !supportedProtocols.includes(allowedSpec.protocol)) {
       continue;
     }
 
@@ -283,7 +344,24 @@ export async function isActionDomainAllowed(
 }
 
 /**
- * Extracts domain from MCP server config URL.
+ * Validates domain for OpenAPI Agent Actions (HTTP/HTTPS only).
+ * SECURITY: WebSocket protocols are NOT allowed per OpenAPI specification.
+ * @param domain - The domain to check (can include protocol/port)
+ * @param allowedDomains - List of allowed domain patterns
+ */
+export async function isActionDomainAllowed(
+  domain?: string | null,
+  allowedDomains?: string[] | null,
+): Promise<boolean> {
+  if (!domain || typeof domain !== 'string') {
+    return false;
+  }
+  return isDomainAllowedCore(domain, allowedDomains, HTTP_PROTOCOLS);
+}
+
+/**
+ * Extracts full domain spec (protocol://hostname:port) from MCP server config URL.
+ * Returns the full origin for proper protocol/port matching against allowedDomains.
  * Returns null for stdio transports (no URL) or invalid URLs.
  * @param config - MCP server configuration (accepts any config with optional url field)
  */
@@ -296,7 +374,9 @@ export function extractMCPServerDomain(config: Record<string, unknown>): string 
 
   try {
     const parsedUrl = new URL(url);
-    return parsedUrl.hostname.replace(/^www\./i, '');
+    // Return full origin (protocol://hostname:port) for proper domain validation
+    // This allows admins to restrict by protocol/port in allowedDomains
+    return parsedUrl.origin;
   } catch {
     return null;
   }
@@ -304,7 +384,7 @@ export function extractMCPServerDomain(config: Record<string, unknown>): string 
 
 /**
  * Validates MCP server domain against allowedDomains.
- * Reuses isActionDomainAllowed for consistent validation logic.
+ * Supports HTTP, HTTPS, WS, and WSS protocols (per MCP specification).
  * Stdio transports (no URL) are always allowed.
  * @param config - MCP server configuration with optional url field
  * @param allowedDomains - List of allowed domains (with wildcard support)
@@ -320,6 +400,6 @@ export async function isMCPDomainAllowed(
     return true;
   }
 
-  // Reuse existing validation logic (includes wildcard support)
-  return isActionDomainAllowed(domain, allowedDomains);
+  // Use MCP_PROTOCOLS (HTTP/HTTPS/WS/WSS) for MCP server validation
+  return isDomainAllowedCore(domain, allowedDomains, MCP_PROTOCOLS);
 }
