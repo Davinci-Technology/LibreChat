@@ -65,6 +65,7 @@ jobs:
             # 2. Our custom files: keep ours
             for f in \
               packages/api/src/mcp/connection.ts \
+              packages/api/package.json \
               api/app/clients/tools/util/handleTools.js \
               api/app/clients/tools/index.js; do
               if git diff --name-only --diff-filter=U | grep -q "^${f}$"; then
@@ -99,7 +100,7 @@ jobs:
             fi
 
             # 4. package.json / package-lock.json: accept upstream versions
-            for f in package.json package-lock.json packages/api/package.json; do
+            for f in package.json package-lock.json; do
               if git diff --name-only --diff-filter=U | grep -q "^${f}$"; then
                 echo "Resolving $f -> accepting upstream"
                 git checkout --theirs -- "$f"
