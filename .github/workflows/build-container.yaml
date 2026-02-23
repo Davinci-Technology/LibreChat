@@ -75,21 +75,27 @@ jobs:
             done
 
             # 3. CLAUDE.md / AGENTS.md: handle "distinct types" conflict
-            # Git renames to CLAUDE.md~HEAD and CLAUDE.md~upstream/main for type conflicts
+            # Git renames to CLAUDE.md~HEAD and CLAUDE.md~upstream/main for type conflicts.
+            # These renamed files are tracked in the index as conflicted entries.
             if ls CLAUDE.md~* 1>/dev/null 2>&1 || git status --porcelain | grep -q "CLAUDE.md"; then
               echo "Resolving CLAUDE.md distinct types conflict -> keeping ours"
               # Keep our version: the ~HEAD variant is ours
               if [ -f "CLAUDE.md~HEAD" ]; then
                 cp "CLAUDE.md~HEAD" CLAUDE.md
               fi
-              # Remove all conflict variants
-              rm -f CLAUDE.md~* 2>/dev/null || true
+              # Remove the renamed conflict variants from disk and index
+              for variant in CLAUDE.md~HEAD "CLAUDE.md~upstream/main"; do
+                if [ -f "$variant" ]; then
+                  rm -f "$variant"
+                fi
+                # Force-update the index to remove the entry (even if file is already gone)
+                git update-index --force-remove "$variant" 2>/dev/null || true
+              done
+              # Stage our CLAUDE.md
               git add CLAUDE.md
               # Remove upstream's AGENTS.md symlink if present
               git rm -f AGENTS.md 2>/dev/null || true
               rm -f AGENTS.md 2>/dev/null || true
-              # Also clean up any staged conflict variants
-              git rm -f "CLAUDE.md~HEAD" "CLAUDE.md~upstream/main" 2>/dev/null || true
             fi
 
             # 4. package.json / package-lock.json: accept upstream versions
