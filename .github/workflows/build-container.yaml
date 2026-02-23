@@ -120,6 +120,13 @@ jobs:
             git commit --no-edit
           fi
 
+          # Post-merge: regenerate package-lock.json to sync with our custom package.json changes
+          # (upstream's lockfile won't include our added dependencies like ws, @types/ws)
+          npm install --package-lock-only --ignore-scripts 2>/dev/null && git add package-lock.json
+          if ! git diff --cached --quiet -- package-lock.json; then
+            git commit -m "Regenerate package-lock.json for custom dependencies"
+          fi
+
           # Post-merge: remove any upstream workflows that came in cleanly
           REMOVED_WORKFLOWS=false
           for wf in .github/workflows/*.yml .github/workflows/*.yaml; do
