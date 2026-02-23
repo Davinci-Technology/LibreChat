@@ -64,6 +64,7 @@ jobs:
 
             # 2. Our custom files: keep ours
             for f in \
+              Dockerfile \
               packages/api/src/mcp/connection.ts \
               packages/api/package.json \
               api/app/clients/tools/util/handleTools.js \
