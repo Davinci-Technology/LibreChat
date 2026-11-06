@@ -92,8 +92,18 @@ pipeline {
                             git update-index --force-remove "$variant" 2>/dev/null || true
                           done
                           git add CLAUDE.md
-                          git rm -f AGENTS.md 2>/dev/null || true
-                          rm -f AGENTS.md 2>/dev/null || true
+                        fi
+                        # 3b. AGENTS.md is the fork's shared agent entrypoint (2026-11-06):
+                        # upstream's text plus a marked fork section; CLAUDE.md is only an
+                        # '@AGENTS.md' adapter. Keep ours; never delete it (the old step did).
+                        if git diff --name-only --diff-filter=U | grep -q "^AGENTS.md$" || ls AGENTS.md~* 1>/dev/null 2>&1; then
+                          echo "Resolving AGENTS.md -> keeping ours"
+                          if [ -f "AGENTS.md~HEAD" ]; then cp "AGENTS.md~HEAD" AGENTS.md; else git checkout --ours -- AGENTS.md; fi
+                          for variant in AGENTS.md~HEAD "AGENTS.md~upstream/main"; do
+                            rm -f "$variant" 2>/dev/null || true
+                            git update-index --force-remove "$variant" 2>/dev/null || true
+                          done
+                          git add AGENTS.md
                         fi
 
                         # 4. package.json / package-lock.json: accept upstream
