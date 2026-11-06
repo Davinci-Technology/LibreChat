@@ -1,5 +1,27 @@
 # LibreChat
 
+## Davinci fork additions (not upstream text)
+
+<!-- BEGIN DAVINCI FORK ADDITIONS. Everything after the END marker is upstream LibreChat's AGENTS.md, kept verbatim so upstream merges stay clean. Add fork rules here or in .ai/rules/fork-customizations.md, never inside upstream's text. -->
+
+This repository is Davinci-Technology's customised fork of LibreChat. Remotes: `origin` = `https://github.com/Davinci-Technology/LibreChat.git`, `upstream` = `https://github.com/danny-avila/LibreChat.git`.
+
+- Delivery is the root `Jenkinsfile`: a daily cron (10:00 UTC) merges `upstream/main`, then builds `librechat:davinci`, pushes it to `davinciai.azurecr.io` and restarts `deployment/librechat-prd-librechat` (namespace `librechat`, AKS). A push to `main` builds and deploys without syncing. Manual parameters: `SYNC_ONLY`, `SKIP_SYNC`.
+- Fork-specific code: the `DavinciProjectFiles` tool (`api/app/clients/tools/structured/DavinciProjectFiles.js`, registered in `tools/index.js` and `util/handleTools.js`) and `packages/api/src/mcp/WebSocketClientTransportWithHeaders.ts` (currently not imported by `connection.ts`).
+- Merge conflicts resolve "keep ours" for `Dockerfile`, `Jenkinsfile`, `packages/api/src/mcp/connection.ts`, `packages/api/package.json`, `api/app/clients/tools/handleTools.js` and `api/app/clients/tools/index.js`; root `package.json` and lockfile take upstream; upstream GitHub Actions workflows are deleted (CI is Jenkins only).
+- No automated tests run in CI. Upstream's testing guidance below applies to local work.
+- The sync step's `CLAUDE.md` conflict handler runs `git rm -f AGENTS.md`; it predates this layout and must be fixed in the `Jenkinsfile` before this file can survive a sync.
+
+### Rules routing
+
+Before editing a file matching a row, or before merging `upstream/main`, read that rules file in full.
+
+| Files | Rules file |
+|---|---|
+| `Jenkinsfile`, `Dockerfile`, `.github/**`, `packages/api/src/mcp/**`, `packages/api/package.json`, `api/app/clients/tools/**`, and any upstream merge | `.ai/rules/fork-customizations.md` |
+
+<!-- END DAVINCI FORK ADDITIONS -->
+
 ## Project Overview
 
 LibreChat is a monorepo with the following key workspaces:
